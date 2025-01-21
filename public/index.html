@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lietuviškų Naujienų Haiku</title>
     
+    <!-- Performance Optimizations -->
+    <link rel="preload" href="/css/styles.css" as="style">
+    <link rel="preload" href="/js/main.js" as="script">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
     <!-- Enhanced Meta Tags -->
     <meta name="description" content="Lietuviškos naujienos haiku formatu - unikalus naujienų skaitymo būdas">
     <meta name="keywords" content="haiku, lietuvos naujienos, poezija, naujienos, literatūra">
@@ -30,15 +36,21 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     
-    <!-- Optimized Font Loading -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
     
+    <!-- Styles -->
     <link rel="stylesheet" href="/css/styles.css">
+
+    <!-- Inline Critical State -->
+    <script>
+        // Prevent FOUC (Flash of Unstyled Content)
+        document.documentElement.setAttribute('data-theme', 
+            localStorage.getItem('theme') || 'dark');
+    </script>
 </head>
 <body>
-    <div class="phone-container">
+    <div class="phone-container" role="main">
         <div class="screen">
             <div class="status-bar">
                 <span>LT HAIKU</span>
@@ -90,6 +102,36 @@
         </div>
     </div>
 
-    <script src="/js/main.js"></script>
+    <!-- Error Template -->
+    <template id="errorTemplate">
+        <div class="error-message">
+            <p></p>
+            <button class="retry-button">Bandyti dar kartą</button>
+        </div>
+    </template>
+
+    <!-- Offline Indicator -->
+    <div id="offlineWarning" class="offline-warning" hidden>
+        Nėra interneto ryšio
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/main.js" defer></script>
+    <script>
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .catch(error => console.error('SW registration failed:', error));
+            });
+        }
+    </script>
+
+    <!-- Fallback for No JavaScript -->
+    <noscript>
+        <div class="noscript-warning">
+            Šiai aplikacijai reikalingas JavaScript. Prašome jį įjungti.
+        </div>
+    </noscript>
 </body>
 </html>

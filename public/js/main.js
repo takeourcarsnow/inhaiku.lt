@@ -1,6 +1,16 @@
+// Constants
+const CONFIG = {
+    HISTORY_MAX_ITEMS: 50,
+    TYPING_SPEED: 50,
+    TYPING_VARIANCE: 20,
+    RETRY_ATTEMPTS: 3,
+    RETRY_DELAY: 1500,
+    NOTIFICATION_DURATION: 3000
+};
+
 // History Manager Class
 class HistoryManager {
-    constructor(maxItems = 50) {
+    constructor(maxItems = CONFIG.HISTORY_MAX_ITEMS) {
         this.maxItems = maxItems;
         this.history = this.loadHistory();
     }
@@ -15,25 +25,34 @@ class HistoryManager {
     }
 
     addItem(headline, haiku) {
-        const item = {
-            headline,
-            haiku,
-            timestamp: new Date().toISOString()
-        };
+        try {
+            const item = {
+                headline,
+                haiku,
+                timestamp: new Date().toISOString()
+            };
 
-        this.history.unshift(item);
-        if (this.history.length > this.maxItems) {
-            this.history = this.history.slice(0, this.maxItems);
+            this.history.unshift(item);
+            if (this.history.length > this.maxItems) {
+                this.history = this.history.slice(0, this.maxItems);
+            }
+
+            this.saveHistory();
+        } catch (error) {
+            console.error('Error adding history item:', error);
         }
-
-        this.saveHistory();
     }
 
     saveHistory() {
         try {
             localStorage.setItem('haikuHistory', JSON.stringify(this.history));
-        } catch (e) {
-            console.error('Error saving history:', e);
+        } catch (error) {
+            console.error('Error saving history:', error);
+            // Try to clear some space if storage is full
+            if (error.name === 'QuotaExceededError') {
+                this.history = this.history.slice(0, Math.floor(this.maxItems / 2));
+                this.saveHistory();
+            }
         }
     }
 
@@ -45,26 +64,46 @@ class HistoryManager {
 // Initialize History Manager
 const historyManager = new HistoryManager();
 
-// Theme handling
-function setTheme(theme) {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
+// DOM Elements cache
+const elements = {
+    headline: document.getElementById('headline'),
+    haiku: document.getElementById('haiku'),
+    historyContainer: document.getElementById('historyContainer'),
+    historyList: document.getElementById('historyList'),
+    clock: document.getElementById('clock'),
+    date: document.getElementById('date')
+};
+
+// Typing animation with performance optimization
+function typeTextWithPromise(element, text) {
+    return new Promise((resolve) => {
+        element.textContent = '';
+        let i = 0;
+        const speed = CONFIG.TYPING_SPEED;
+        const variance = CONFIG.TYPING_VARIANCE;
+
+        function typeNextChar() {
+            if (i < text.length) {
+                element.textContent += text.charAt(i);
+                i++;
+                setTimeout(typeNextChar, speed + Math.random() * variance);
+            } else {
+                resolve();
+            }
+        }
+
+        typeNextChar();
+    });
 }
 
-function toggleTheme() {
-    const currentTheme = localStorage.getItem('theme') || 'dark';
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-}
-
-// Main haiku fetching function
+// Enhanced error handling
 async function getNewHaiku(retryCount = 0) {
-    const headlineEl = document.getElementById('headline');
-    const haikuEl = document.getElementById('haiku');
+    const headlineEl = elements.headline;
+    const haikuEl = elements.haiku;
     
     try {
-        headlineEl.innerHTML = 'Kraunama...';
-        haikuEl.innerHTML = '';
+        headlineEl.textContent = 'Kraunama...';
+        haikuEl.textContent = '';
         headlineEl.classList.add('loading', 'skeleton');
         haikuEl.classList.add('skeleton');
 
@@ -72,8 +111,7 @@ async function getNewHaiku(retryCount = 0) {
             headers: {
                 'Accept': 'application/json',
                 'Cache-Control': 'no-cache'
-            },
-            timeout: 10000
+            }
         });
 
         if (!response.ok) {
@@ -100,38 +138,16 @@ async function getNewHaiku(retryCount = 0) {
         headlineEl.classList.remove('loading', 'skeleton');
         haikuEl.classList.remove('skeleton');
         
-        if (retryCount < 3) {
+        if (retryCount < CONFIG.RETRY_ATTEMPTS) {
             headlineEl.textContent = `Bandoma dar kartą... (${retryCount + 1}/3)`;
-            setTimeout(() => getNewHaiku(retryCount + 1), 1500);
+            setTimeout(() => getNewHaiku(retryCount + 1), CONFIG.RETRY_DELAY);
         } else {
             handleError(error, headlineEl);
         }
     }
 }
 
-// Typing animation
-function typeTextWithPromise(element, text) {
-    return new Promise((resolve) => {
-        element.textContent = '';
-        let i = 0;
-        const speed = 50;
-        const variance = 20;
-
-        function typeNextChar() {
-            if (i < text.length) {
-                element.textContent += text.charAt(i);
-                i++;
-                setTimeout(typeNextChar, speed + Math.random() * variance);
-            } else {
-                resolve();
-            }
-        }
-
-        typeNextChar();
-    });
-}
-
-// Error handling
+// Error handling with retry option
 function handleError(error, element) {
     element.classList.add('error-state');
     element.textContent = 'Įvyko klaida. Bandykite dar kartą.';
@@ -146,25 +162,31 @@ function handleError(error, element) {
     element.appendChild(retryButton);
 }
 
-// Sharing functionality
-function shareContent(platform) {
-    const headline = document.getElementById('headline').textContent;
-    const haiku = document.getElementById('haiku').textContent;
+// Optimized sharing functionality
+async function shareContent(platform) {
+    const headline = elements.headline.textContent;
+    const haiku = elements.haiku.textContent;
     const text = `${headline}\n\n${haiku}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
-    const url = encodeURIComponent(window.location.href);
+    const url = window.location.href;
 
     if (navigator.share && platform === 'native') {
-        navigator.share({
-            title: 'Lietuviškų Naujienų Haiku',
-            text: text,
-            url: window.location.href
-        }).catch(console.error);
+        try {
+            await navigator.share({
+                title: 'Lietuviškų Naujienų Haiku',
+                text,
+                url
+            });
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Share failed:', error);
+            }
+        }
         return;
     }
 
     const shareUrls = {
-        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${url}`,
-        facebook: `https://www.facebook.com/sharer/sharer.php?u=${url}`
+        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`
     };
 
     if (shareUrls[platform]) {
@@ -172,58 +194,22 @@ function shareContent(platform) {
     }
 }
 
-// Copy functionality
+// Optimized copy functionality
 async function copyToClipboard() {
-    const headline = document.getElementById('headline').textContent;
-    const haiku = document.getElementById('haiku').textContent;
+    const headline = elements.headline.textContent;
+    const haiku = elements.haiku.textContent;
     const text = `${headline}\n\n${haiku}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
     
     try {
         await navigator.clipboard.writeText(text);
         showNotification('Nukopijuota!');
     } catch (err) {
+        console.error('Copy failed:', err);
         showNotification('Nepavyko nukopijuoti', 'error');
     }
 }
 
-// History display functions
-function showHistory() {
-    const historyContainer = document.getElementById('historyContainer');
-    if (historyContainer) {
-        updateHistoryDisplay();
-        historyContainer.style.display = 'block';
-        document.body.style.overflow = 'hidden';
-    }
-}
-
-function closeModal() {
-    const historyContainer = document.getElementById('historyContainer');
-    if (historyContainer) {
-        historyContainer.style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-}
-
-function updateHistoryDisplay() {
-    const historyList = document.getElementById('historyList');
-    if (!historyList) return;
-
-    historyList.innerHTML = '';
-    
-    historyManager.getHistory().forEach((item) => {
-        const date = new Date(item.timestamp).toLocaleString('lt-LT');
-        const historyItem = document.createElement('div');
-        historyItem.className = 'history-item';
-        historyItem.innerHTML = `
-            <div style="font-weight: bold;">${item.headline}</div>
-            <div style="white-space: pre-line; margin: 10px 0;">${item.haiku}</div>
-            <div style="font-size: 0.8em;">${date}</div>
-        `;
-        historyList.appendChild(historyItem);
-    });
-}
-
-// Notification
+// Notification system
 function showNotification(message, type = 'success') {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
@@ -232,16 +218,54 @@ function showNotification(message, type = 'success') {
 
     setTimeout(() => {
         notification.remove();
-    }, 3000);
+    }, CONFIG.NOTIFICATION_DURATION);
 }
 
-// Update meta tags
+// Theme handling
+function toggleTheme() {
+    const currentTheme = localStorage.getItem('theme') || 'dark';
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+}
+
+// History display
+function showHistory() {
+    updateHistoryDisplay();
+    elements.historyContainer.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    elements.historyContainer.style.display = 'none';
+    document.body.style.overflow = 'auto';
+}
+
+function updateHistoryDisplay() {
+    if (!elements.historyList) return;
+
+    elements.historyList.innerHTML = '';
+    historyManager.getHistory().forEach((item) => {
+        const historyItem = document.createElement('div');
+        historyItem.className = 'history-item';
+        historyItem.innerHTML = `
+            <div style="font-weight: bold;">${item.headline}</div>
+            <div style="white-space: pre-line; margin: 10px 0;">${item.haiku}</div>
+            <div style="font-size: 0.8em;">
+                ${new Date(item.timestamp).toLocaleString('lt-LT')}
+            </div>
+        `;
+        elements.historyList.appendChild(historyItem);
+    });
+}
+
+// Meta tags update
 function updateMetaTags(headline, haiku) {
     const metaTags = {
-        'og:title': 'Lietuviškų Naujienų Haiku',
-        'og:description': `${headline}\n${haiku}`,
-        'twitter:title': 'Lietuviškų Naujienų Haiku',
-        'twitter:description': `${headline}\n${haiku}`
+        'og:title': headline,
+        'og:description': haiku,
+        'twitter:title': headline,
+        'twitter:description': haiku
     };
 
     Object.entries(metaTags).forEach(([property, content]) => {
@@ -253,56 +277,48 @@ function updateMetaTags(headline, haiku) {
 // Clock update
 function updateDateTime() {
     const now = new Date();
-    
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    document.getElementById('clock').textContent = `${hours}:${minutes}`;
-    
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    document.getElementById('date').textContent = `${year}-${month}-${day}`;
-}
-
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-            .then(registration => {
-                console.log('ServiceWorker registration successful');
-            })
-            .catch(err => {
-                console.log('ServiceWorker registration failed: ', err);
-            });
+    elements.clock.textContent = now.toLocaleTimeString('lt-LT', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+    });
+    elements.date.textContent = now.toLocaleDateString('lt-LT', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
     });
 }
+
+// Event delegation for all button clicks
+document.addEventListener('click', async (e) => {
+    const button = e.target.closest('button');
+    if (!button) return;
+
+    const action = button.getAttribute('data-action');
+    if (!action) return;
+
+    switch (action) {
+        case 'new-haiku': await getNewHaiku(); break;
+        case 'share-twitter': shareContent('twitter'); break;
+        case 'share-facebook': shareContent('facebook'); break;
+        case 'show-history': showHistory(); break;
+        case 'close-modal': closeModal(); break;
+        case 'toggle-theme': toggleTheme(); break;
+        case 'copy': await copyToClipboard(); break;
+    }
+});
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Add click event listeners
-    document.querySelectorAll('button').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const action = e.target.getAttribute('data-action');
-            if (!action) return;
-
-            switch (action) {
-                case 'new-haiku': getNewHaiku(); break;
-                case 'share-twitter': shareContent('twitter'); break;
-                case 'share-facebook': shareContent('facebook'); break;
-                case 'show-history': showHistory(); break;
-                case 'toggle-theme': toggleTheme(); break;
-                case 'copy': copyToClipboard(); break;
-                case 'close-modal': closeModal(); break;
-            }
-        });
-    });
-
-    // Initialize theme
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    setTheme(savedTheme);
-
-    // Start clock and get first haiku
     setInterval(updateDateTime, 1000);
     updateDateTime();
     getNewHaiku();
+});
+
+// Handle offline/online events
+window.addEventListener('online', () => {
+    showNotification('Interneto ryšys atkurtas');
+});
+
+window.addEventListener('offline', () => {
+    showNotification('Nėra interneto ryšio', 'error');
 });

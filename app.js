@@ -12,94 +12,159 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// Vercel-specific configuration
-if (process.env.VERCEL) {
-    app.use((req, res, next) => {
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        next();
-    });
+// Initialize Gemini AI with error handling
+let genAI;
+try {
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+} catch (error) {
+    console.error('Failed to initialize Gemini AI:', error);
+    process.exit(1);
 }
 
-// Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: process.env.VERCEL ? 50 : 100,
-    message: { error: 'Per daug užklausų. Bandykite vėliau.' }
-});
-
-// Middleware
-app.use(cors());
-app.use(helmet({
+// Enhanced security headers
+const securityHeaders = {
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://www.googleapis.com"],
             imgSrc: ["'self'", "data:", "https:"],
             frameSrc: ["'none'"]
         }
+    },
+    crossOriginEmbedderPolicy: true,
+    crossOriginOpenerPolicy: true,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    dnsPrefetchControl: true,
+    expectCt: true,
+    frameguard: true,
+    hidePoweredBy: true,
+    hsts: true,
+    ieNoOpen: true,
+    noSniff: true,
+    permittedCrossDomainPolicies: true,
+    referrerPolicy: true,
+    xssFilter: true
+};
+
+// Enhanced rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: process.env.VERCEL ? 50 : 100,
+    message: { error: 'Per daug užklausų. Bandykite vėliau.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => process.env.NODE_ENV === 'development'
+});
+
+// Middleware configuration
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+    methods: ['GET'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(helmet(securityHeaders));
+app.use(compression({
+    level: 6,
+    threshold: 0,
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) {
+            return false;
+        }
+        return compression.filter(req, res);
     }
 }));
-app.use(compression());
-app.use(express.static('public'));
-app.use('/api', limiter);
 
-// News sources configuration
+// Static files with caching
+app.use(express.static('public', {
+    maxAge: '1d',
+    etag: true,
+    lastModified: true
+}));
+
+// News sources with improved error handling
 const NEWS_SOURCES = [
     {
         url: 'https://www.15min.lt',
-        selector: '.article-title'
+        selector: '.article-title',
+        timeout: 5000
     },
     {
         url: 'https://www.delfi.lt',
-        selector: '.headline-title'
+        selector: '.headline-title',
+        timeout: 5000
     },
     {
         url: 'https://www.lrt.lt',
-        selector: '.news-title'
+        selector: '.news-title',
+        timeout: 5000
     }
-];
+].map(source => ({
+    ...source,
+    fetchOptions: {
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; NewsHaikuBot/1.0)',
+            'Accept-Language': 'lt'
+        },
+        timeout: source.timeout
+    }
+}));
 
-// News cache
-const newsCache = {
-    headlines: [],
-    timestamp: null,
-    expiryTime: 5 * 60 * 1000,
-    usedIndices: new Set(),
-    
+// Improved news cache with TTL and memory management
+class NewsCache {
+    constructor(expiryTime = 5 * 60 * 1000) {
+        this.headlines = [];
+        this.timestamp = null;
+        this.expiryTime = expiryTime;
+        this.usedIndices = new Set();
+        this.maxSize = 1000;
+    }
+
     isExpired() {
         return !this.timestamp || (Date.now() - this.timestamp) >= this.expiryTime;
-    },
-    
+    }
+
     reset() {
         this.headlines = [];
         this.timestamp = null;
         this.usedIndices.clear();
     }
-};
 
-// Fetch news headlines
-async function fetchLithuanianNews() {
+    addHeadlines(headlines) {
+        this.headlines = headlines.slice(0, this.maxSize);
+        this.timestamp = Date.now();
+        this.usedIndices.clear();
+    }
+
+    getRandomHeadline() {
+        if (this.usedIndices.size >= this.headlines.length) {
+            this.usedIndices.clear();
+        }
+
+        const availableIndices = Array.from(Array(this.headlines.length).keys())
+            .filter(i => !this.usedIndices.has(i));
+
+        const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        this.usedIndices.add(randomIndex);
+
+        return this.headlines[randomIndex];
+    }
+}
+
+const newsCache = new NewsCache();
+
+// Improved news fetching with retry mechanism
+async function fetchLithuanianNews(retryCount = 3) {
     try {
-        if (newsCache.isExpired() || newsCache.usedIndices.size >= newsCache.headlines.length) {
-            newsCache.reset();
-            
+        if (newsCache.isExpired()) {
             const headlines = [];
-            for (const source of NEWS_SOURCES) {
+            const errors = [];
+
+            await Promise.all(NEWS_SOURCES.map(async source => {
                 try {
-                    const response = await axios.get(source.url, {
-                        timeout: 5000,
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (compatible; NewsHaikuBot/1.0)',
-                            'Accept-Language': 'lt'
-                        }
-                    });
-                    
+                    const response = await axios.get(source.url, source.fetchOptions);
                     const $ = cheerio.load(response.data);
                     
                     $(source.selector).each((i, element) => {
@@ -110,30 +175,22 @@ async function fetchLithuanianNews() {
                         }
                     });
                 } catch (error) {
-                    console.error(`Error fetching from ${source.url}:`, error.message);
+                    errors.push(`${source.url}: ${error.message}`);
                 }
-            }
+            }));
 
             if (headlines.length === 0) {
-                throw new Error('Nepavyko gauti naujienų');
+                if (retryCount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return fetchLithuanianNews(retryCount - 1);
+                }
+                throw new Error(`Failed to fetch news: ${errors.join(', ')}`);
             }
 
-            newsCache.headlines = headlines;
-            newsCache.timestamp = Date.now();
+            newsCache.addHeadlines(headlines);
         }
 
-        const availableIndices = Array.from(Array(newsCache.headlines.length).keys())
-            .filter(i => !newsCache.usedIndices.has(i));
-
-        if (availableIndices.length === 0) {
-            newsCache.reset();
-            return fetchLithuanianNews();
-        }
-
-        const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-        newsCache.usedIndices.add(randomIndex);
-
-        return newsCache.headlines[randomIndex];
+        return newsCache.getRandomHeadline();
 
     } catch (error) {
         console.error('Error in fetchLithuanianNews:', error);
@@ -141,7 +198,7 @@ async function fetchLithuanianNews() {
     }
 }
 
-// Generate haiku
+// Improved haiku generation with better error handling
 async function generateHaiku(headline) {
     try {
         const model = genAI.getGenerativeModel({
@@ -153,22 +210,10 @@ async function generateHaiku(headline) {
                 maxOutputTokens: 100,
             },
             safetySettings: [
-                {
-                    category: "HARM_CATEGORY_HARASSMENT",
-                    threshold: "BLOCK_NONE"
-                },
-                {
-                    category: "HARM_CATEGORY_HATE_SPEECH",
-                    threshold: "BLOCK_NONE"
-                },
-                {
-                    category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    threshold: "BLOCK_NONE"
-                },
-                {
-                    category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    threshold: "BLOCK_NONE"
-                }
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
             ]
         });
 
@@ -186,66 +231,85 @@ async function generateHaiku(headline) {
     }
 }
 
-// API endpoints
+// API endpoints with improved error handling and response formatting
 app.get('/api/haiku', async (req, res) => {
     try {
         const headline = await fetchLithuanianNews();
         const haiku = await generateHaiku(headline);
         
-        res.json({ 
-            headline, 
-            haiku,
-            timestamp: new Date().toISOString()
+        res.json({
+            success: true,
+            data: { 
+                headline, 
+                haiku,
+                timestamp: new Date().toISOString()
+            }
         });
     } catch (error) {
         console.error('API Error:', error);
-        res.status(500).json({ 
-            error: 'Nepavyko apdoroti užklausos',
-            message: process.env.NODE_ENV === 'development' ? error.message : 'Įvyko vidinė klaida'
+        res.status(500).json({
+            success: false,
+            error: {
+                message: 'Nepavyko apdoroti užklausos',
+                details: process.env.NODE_ENV === 'development' ? error.message : undefined
+            }
         });
     }
 });
 
-// Health check endpoint
+// Enhanced health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'ok', 
+    res.json({
+        status: 'ok',
         timestamp: new Date().toISOString(),
         version: process.env.npm_package_version,
+        environment: process.env.NODE_ENV,
         cacheStats: {
             totalHeadlines: newsCache.headlines.length,
             usedHeadlines: newsCache.usedIndices.size,
-            cacheAge: newsCache.timestamp ? (Date.now() - newsCache.timestamp) / 1000 : null
+            cacheAge: newsCache.timestamp ? (Date.now() - newsCache.timestamp) / 1000 : null,
+            isExpired: newsCache.isExpired()
         }
     });
 });
 
-// Error handling middleware
+// Global error handling middleware
 app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({ 
-        error: 'Serverio klaida',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'Įvyko vidinė klaida'
+    console.error('Unhandled Error:', err);
+    res.status(500).json({
+        success: false,
+        error: {
+            message: 'Serverio klaida',
+            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        }
     });
 });
 
-// Start server
+// Graceful shutdown handling
 if (!process.env.VERCEL) {
     const server = app.listen(port, () => {
         console.log(`Server running at http://localhost:${port}`);
     });
 
-    // Graceful shutdown
-    process.on('SIGTERM', () => {
-        console.log('SIGTERM received. Performing graceful shutdown...');
+    const shutdown = async () => {
+        console.log('Graceful shutdown initiated...');
         server.close(() => {
             console.log('Server closed');
             process.exit(0);
         });
-    });
+
+        // Force shutdown after 10 seconds
+        setTimeout(() => {
+            console.error('Could not close connections in time, forcefully shutting down');
+            process.exit(1);
+        }, 10000);
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
 }
 
-// Handle uncaught exceptions
+// Enhanced error handling
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
     if (!process.env.VERCEL) {
