@@ -328,3 +328,48 @@ button:active {
         transition: none !important;
     }
 }
+
+/* Button alignment fixes - add at the end of styles.css */
+.button-container {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.bottom-buttons {
+    width: 100%;
+    box-sizing: border-box;
+    margin-top: auto;
+    padding-top: 10px;
+    border-top: 2px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.share-buttons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.social-button {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 15px;
+}
+
+.social-button.patreon {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 480px) {
+    .bottom-buttons,
+    .share-buttons,
+    .social-button.patreon {
+        width: 100%;
+        max-width: 100%;
+    }
+}
