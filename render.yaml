@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: lt-news-haiku
+    env: node
+    plan: free
+    buildCommand: |
+      npm install
+      npm run build
+    startCommand: node app.js
+    publicDir: public
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=0, must-revalidate
+      - path: /css/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /js/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    staticPublishPath: ./public
+    healthCheckPath: /health
+    autoDeploy: true
