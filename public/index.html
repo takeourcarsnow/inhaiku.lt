@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lietuviškų Naujienų Haiku</title>
+    
+    <!-- Enhanced Meta Tags -->
+    <meta name="description" content="Lietuviškos naujienos haiku formatu - unikalus naujienų skaitymo būdas">
+    <meta name="keywords" content="haiku, lietuvos naujienos, poezija, naujienos, literatūra">
+    <meta name="author" content="Lietuviškų Naujienų Haiku">
+    <meta name="robots" content="index, follow">
+    
+    <!-- Social Media Meta Tags -->
+    <meta property="og:title" content="Lietuviškų Naujienų Haiku">
+    <meta property="og:description" content="Lietuviškos naujienos haiku formatu">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://your-vercel-url.vercel.app">
+    <meta property="og:image" content="https://your-vercel-url.vercel.app/preview.jpg">
+    
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Lietuviškų Naujienų Haiku">
+    <meta name="twitter:description" content="Lietuviškos naujienos haiku formatu">
+    <meta name="twitter:image" content="https://your-vercel-url.vercel.app/preview.jpg">
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#1e2f23">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    
+    <!-- Optimized Font Loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div class="phone-container">
+        <div class="screen">
+            <div class="status-bar">
+                <span>LT HAIKU</span>
+                <span id="clock">12:00</span>
+                <span id="date"></span>
+            </div>
+            <div class="content">
+                <div id="headline" class="message headline"></div>
+                <div id="haiku" class="message haiku"></div>
+            </div>
+            <div class="button-container">
+                <button data-action="new-haiku">📱 NAUJAS HAIKU</button>
+                <div class="social-buttons">
+                    <button data-action="toggle-theme" class="social-button theme">
+                        🌓 Tema
+                    </button>
+                    <button data-action="show-history" class="social-button">
+                        📚 Istorija
+                    </button>
+                    <button data-action="copy" class="social-button">
+                        📋 Kopijuoti
+                    </button>
+                </div>
+                <div class="bottom-buttons">
+                    <div class="share-buttons">
+                        <button data-action="share-twitter" class="social-button twitter">
+                            🐦 Dalintis
+                        </button>
+                        <button data-action="share-facebook" class="social-button facebook">
+                            📘 Dalintis
+                        </button>
+                    </div>
+                    <a href="https://www.patreon.com/YOUR_PATREON_USERNAME" 
+                       target="_blank" 
+                       rel="noopener noreferrer"
+                       class="social-button patreon">
+                        ❤️ Paremti
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="history-container" id="historyContainer">
+        <div class="history-content">
+            <h2>Haiku Istorija</h2>
+            <div id="historyList"></div>
+            <button data-action="close-modal">Uždaryti</button>
+        </div>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>
