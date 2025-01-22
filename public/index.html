@@ -2,14 +2,9 @@
 <html lang="lt">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Lietuviškų Naujienų Haiku</title>
-    
-    <!-- Performance Optimizations -->
-    <link rel="preload" href="/css/styles.css" as="style">
-    <link rel="preload" href="/js/main.js" as="script">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     
     <!-- Enhanced Meta Tags -->
     <meta name="description" content="Lietuviškos naujienos haiku formatu - unikalus naujienų skaitymo būdas">
@@ -36,21 +31,19 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <!-- Resource Hints -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=VT323&display=swap" as="style">
+    <link rel="preload" href="/css/styles.css" as="style">
+    <link rel="preload" href="/js/main.js" as="script">
     
     <!-- Styles -->
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/styles.css">
-
-    <!-- Inline Critical State -->
-    <script>
-        // Prevent FOUC (Flash of Unstyled Content)
-        document.documentElement.setAttribute('data-theme', 
-            localStorage.getItem('theme') || 'dark');
-    </script>
 </head>
 <body>
-    <div class="phone-container" role="main">
+    <div class="phone-container">
         <div class="screen">
             <div class="status-bar">
                 <span>LT HAIKU</span>
@@ -58,79 +51,84 @@
                 <span id="date"></span>
             </div>
             <div class="content">
+                <div id="source-indicator" class="source-indicator"></div>
                 <div id="headline" class="message headline"></div>
                 <div id="haiku" class="message haiku"></div>
             </div>
             <div class="button-container">
-                <button data-action="new-haiku">📱 NAUJAS HAIKU</button>
-                <div class="social-buttons">
-                    <button data-action="toggle-theme" class="social-button theme">
-                        🌓 Tema
-                    </button>
-                    <button data-action="show-history" class="social-button">
-                        📚 Istorija
-                    </button>
-                    <button data-action="copy" class="social-button">
-                        📋 Kopijuoti
-                    </button>
-                </div>
-                <div class="bottom-buttons">
-                    <div class="share-buttons">
-                        <button data-action="share-twitter" class="social-button twitter">
-                            🐦 Dalintis
-                        </button>
-                        <button data-action="share-facebook" class="social-button facebook">
-                            📘 Dalintis
-                        </button>
-                    </div>
-                    <a href="https://www.patreon.com/inpixels" 
-                       target="_blank" 
-                       rel="noopener noreferrer"
-                       class="social-button patreon">
-                        ❤️ Paremti
-                    </a>
-                </div>
+    <button data-action="new-haiku" class="main-button">
+        📱 NAUJAS HAIKU
+    </button>
+    
+    <div class="social-buttons">
+        <button data-action="toggle-theme" class="social-button theme">
+            🌓 Tema
+        </button>
+        <button data-action="toggle-favorites" class="social-button">
+            ⭐ Mėgstami
+        </button>
+        <button data-action="show-history" class="social-button">
+            📚 Istorija
+        </button>
+        <button data-action="copy" class="social-button">
+            📋 Kopijuoti
+        </button>
+    </div>
+    
+    <div class="bottom-buttons">
+        <div class="share-buttons">
+            <button data-action="share-twitter" class="social-button twitter">
+                🐦 Dalintis
+            </button>
+            <button data-action="share-facebook" class="social-button facebook">
+                📘 Dalintis
+            </button>
+        </div>
+        
+        <button data-action="favorite-current" class="social-button favorite-button">
+            🤍 Pamėgti
+        </button>
+        
+        <a href="https://www.patreon.com/inpixels" 
+           target="_blank" 
+           rel="noopener noreferrer"
+           class="social-button patreon">
+            ❤️ Paremti
+        </a>
+    </div>
+</div>
+        </div>
+    </div>
+
+    <!-- History Modal -->
+    <div class="modal-container" id="historyContainer" role="dialog" aria-modal="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Haiku Istorija</h2>
+                <button data-action="close-modal" class="close-button">✖️</button>
             </div>
+            <div id="historyList" class="history-list"></div>
         </div>
     </div>
 
-    <div class="history-container" id="historyContainer">
-        <div class="history-content">
-            <h2>Haiku Istorija</h2>
-            <div id="historyList"></div>
-            <button data-action="close-modal">Uždaryti</button>
+    <!-- Favorites Modal -->
+    <div class="modal-container" id="favoritesContainer" role="dialog" aria-modal="true">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Mėgstami Haiku</h2>
+                <button data-action="close-modal" class="close-button">✖️</button>
+            </div>
+            <div id="favoritesList" class="favorites-list"></div>
         </div>
-    </div>
-
-    <!-- Error Template -->
-    <template id="errorTemplate">
-        <div class="error-message">
-            <p></p>
-            <button class="retry-button">Bandyti dar kartą</button>
-        </div>
-    </template>
-
-    <!-- Offline Indicator -->
-    <div id="offlineWarning" class="offline-warning" hidden>
-        Nėra interneto ryšio
     </div>
 
     <!-- Scripts -->
     <script src="/js/main.js" defer></script>
-    <script>
-        // Register Service Worker
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/service-worker.js')
-                    .catch(error => console.error('SW registration failed:', error));
-            });
-        }
-    </script>
-
-    <!-- Fallback for No JavaScript -->
+    
+    <!-- Fallback for no JavaScript -->
     <noscript>
-        <div class="noscript-warning">
-            Šiai aplikacijai reikalingas JavaScript. Prašome jį įjungti.
+        <div class="noscript-message">
+            Šiai aplikacijai reikalingas JavaScript. Prašome įjungti JavaScript savo naršyklėje.
         </div>
     </noscript>
 </body>

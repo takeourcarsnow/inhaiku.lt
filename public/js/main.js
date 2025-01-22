@@ -1,118 +1,179 @@
-// Constants
-const CONFIG = {
-    HISTORY_MAX_ITEMS: 50,
-    TYPING_SPEED: 50,
-    TYPING_VARIANCE: 20,
-    RETRY_ATTEMPTS: 3,
-    RETRY_DELAY: 1500,
-    NOTIFICATION_DURATION: 3000
+// Performance optimization: Use constants for frequently accessed elements
+const DOM = {
+    headline: document.getElementById('headline'),
+    haiku: document.getElementById('haiku'),
+    clock: document.getElementById('clock'),
+    date: document.getElementById('date'),
+    sourceIndicator: document.getElementById('source-indicator'),
+    historyContainer: document.getElementById('historyContainer'),
+    historyList: document.getElementById('historyList'),
+    favoritesContainer: document.getElementById('favoritesContainer'),
+    favoritesList: document.getElementById('favoritesList'),
+    favoriteButton: document.querySelector('.favorite-button'),
+    generateButton: document.querySelector('[data-action="new-haiku"]')
 };
 
 // History Manager Class
 class HistoryManager {
-    constructor(maxItems = CONFIG.HISTORY_MAX_ITEMS) {
+    constructor(maxItems = 50) {
         this.maxItems = maxItems;
         this.history = this.loadHistory();
+        this.storageKey = 'haikuHistory';
     }
 
     loadHistory() {
         try {
-            return JSON.parse(localStorage.getItem('haikuHistory')) || [];
+            return JSON.parse(localStorage.getItem(this.storageKey)) || [];
         } catch (e) {
             console.error('Error loading history:', e);
             return [];
         }
     }
 
-    addItem(headline, haiku) {
-        try {
-            const item = {
-                headline,
-                haiku,
-                timestamp: new Date().toISOString()
-            };
+    addItem(headline, haiku, source) {
+        const item = {
+            headline,
+            haiku,
+            source,
+            timestamp: new Date().toISOString()
+        };
 
-            this.history.unshift(item);
-            if (this.history.length > this.maxItems) {
-                this.history = this.history.slice(0, this.maxItems);
-            }
-
-            this.saveHistory();
-        } catch (error) {
-            console.error('Error adding history item:', error);
+        this.history.unshift(item);
+        
+        if (this.history.length > this.maxItems) {
+            this.history.length = this.maxItems;
         }
+
+        this.saveHistory();
     }
 
     saveHistory() {
         try {
-            localStorage.setItem('haikuHistory', JSON.stringify(this.history));
-        } catch (error) {
-            console.error('Error saving history:', error);
-            // Try to clear some space if storage is full
-            if (error.name === 'QuotaExceededError') {
-                this.history = this.history.slice(0, Math.floor(this.maxItems / 2));
-                this.saveHistory();
-            }
+            localStorage.setItem(this.storageKey, JSON.stringify(this.history));
+        } catch (e) {
+            console.error('Error saving history:', e);
+            this.history.length = Math.floor(this.maxItems / 2);
+            localStorage.setItem(this.storageKey, JSON.stringify(this.history));
         }
     }
 
     getHistory() {
         return this.history;
     }
+
+    formatDate(timestamp) {
+        return new Date(timestamp).toLocaleString('lt-LT', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
 }
 
-// Initialize History Manager
-const historyManager = new HistoryManager();
+// Favorites Manager Class
+class FavoritesManager {
+    constructor() {
+        this.favorites = this.loadFavorites();
+        this.storageKey = 'haikuFavorites';
+    }
 
-// DOM Elements cache
-const elements = {
-    headline: document.getElementById('headline'),
-    haiku: document.getElementById('haiku'),
-    historyContainer: document.getElementById('historyContainer'),
-    historyList: document.getElementById('historyList'),
-    clock: document.getElementById('clock'),
-    date: document.getElementById('date')
+    loadFavorites() {
+        try {
+            return JSON.parse(localStorage.getItem(this.storageKey)) || [];
+        } catch (e) {
+            console.error('Error loading favorites:', e);
+            return [];
+        }
+    }
+
+    addFavorite(headline, haiku, source) {
+        const favorite = {
+            headline,
+            haiku,
+            source,
+            timestamp: new Date().toISOString()
+        };
+        this.favorites.unshift(favorite);
+        this.saveFavorites();
+        this.updateFavoriteButton(true);
+    }
+
+    removeFavorite(index) {
+        this.favorites.splice(index, 1);
+        this.saveFavorites();
+        this.updateFavoriteButton(false);
+    }
+
+    isFavorite(headline, haiku) {
+        return this.favorites.some(fav => 
+            fav.headline === headline && fav.haiku === haiku);
+    }
+
+    saveFavorites() {
+        try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.favorites));
+        } catch (e) {
+            console.error('Error saving favorites:', e);
+        }
+    }
+
+    updateFavoriteButton(isFavorite) {
+        if (DOM.favoriteButton) {
+            DOM.favoriteButton.textContent = isFavorite ? '❤️ Pamėgta' : '🤍 Pamėgti';
+            DOM.favoriteButton.classList.toggle('active', isFavorite);
+        }
+    }
+}
+
+// Initialize managers
+const historyManager = new HistoryManager();
+const favoritesManager = new FavoritesManager();
+
+// Theme handling
+const themeManager = {
+    setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+    },
+
+    toggleTheme() {
+        const currentTheme = localStorage.getItem('theme') || 'dark';
+        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+        this.setTheme(newTheme);
+    },
+
+    initTheme() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        this.setTheme(savedTheme);
+    }
 };
 
-// Typing animation with performance optimization
-function typeTextWithPromise(element, text) {
-    return new Promise((resolve) => {
-        element.textContent = '';
-        let i = 0;
-        const speed = CONFIG.TYPING_SPEED;
-        const variance = CONFIG.TYPING_VARIANCE;
+// Haiku fetching with error handling
+async function getNewHaiku() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-        function typeNextChar() {
-            if (i < text.length) {
-                element.textContent += text.charAt(i);
-                i++;
-                setTimeout(typeNextChar, speed + Math.random() * variance);
-            } else {
-                resolve();
-            }
-        }
-
-        typeNextChar();
-    });
-}
-
-// Enhanced error handling
-async function getNewHaiku(retryCount = 0) {
-    const headlineEl = elements.headline;
-    const haikuEl = elements.haiku;
-    
     try {
-        headlineEl.textContent = 'Kraunama...';
-        haikuEl.textContent = '';
-        headlineEl.classList.add('loading', 'skeleton');
-        haikuEl.classList.add('skeleton');
+        if (DOM.generateButton) {
+            DOM.generateButton.disabled = true;
+        }
+        
+        DOM.headline.innerHTML = 'Kraunama...';
+        DOM.haiku.innerHTML = '';
+        DOM.headline.classList.add('loading', 'skeleton');
+        DOM.haiku.classList.add('skeleton');
 
         const response = await fetch('/api/haiku', {
             headers: {
                 'Accept': 'application/json',
                 'Cache-Control': 'no-cache'
-            }
+            },
+            signal: controller.signal
         });
+
+        clearTimeout(timeout);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -120,73 +181,171 @@ async function getNewHaiku(retryCount = 0) {
         
         const data = await response.json();
         
-        if (!data.headline || !data.haiku) {
+        if (!data.headline || !data.haiku || !data.source) {
             throw new Error('Invalid data received');
         }
 
-        headlineEl.classList.remove('loading', 'skeleton');
-        haikuEl.classList.remove('skeleton');
+        DOM.headline.classList.remove('loading', 'skeleton');
+        DOM.haiku.classList.remove('skeleton');
         
-        await typeTextWithPromise(headlineEl, data.headline);
-        await typeTextWithPromise(haikuEl, data.haiku);
+        await typeTextWithPromise(DOM.headline, data.headline);
+        await typeTextWithPromise(DOM.haiku, data.haiku);
         
-        historyManager.addItem(data.headline, data.haiku);
+        DOM.sourceIndicator.textContent = `Šaltinis: ${data.source}`;
+        
+        historyManager.addItem(data.headline, data.haiku, data.source);
         updateMetaTags(data.headline, data.haiku);
+        
+        favoritesManager.updateFavoriteButton(
+            favoritesManager.isFavorite(data.headline, data.haiku)
+        );
 
     } catch (error) {
+        clearTimeout(timeout);
         console.error('Error:', error);
-        headlineEl.classList.remove('loading', 'skeleton');
-        haikuEl.classList.remove('skeleton');
-        
-        if (retryCount < CONFIG.RETRY_ATTEMPTS) {
-            headlineEl.textContent = `Bandoma dar kartą... (${retryCount + 1}/3)`;
-            setTimeout(() => getNewHaiku(retryCount + 1), CONFIG.RETRY_DELAY);
-        } else {
-            handleError(error, headlineEl);
+        DOM.headline.classList.remove('loading', 'skeleton');
+        DOM.haiku.classList.remove('skeleton');
+        handleError(error, DOM.headline);
+    } finally {
+        if (DOM.generateButton) {
+            DOM.generateButton.disabled = false;
         }
     }
 }
 
-// Error handling with retry option
-function handleError(error, element) {
-    element.classList.add('error-state');
-    element.textContent = 'Įvyko klaida. Bandykite dar kartą.';
-    
-    const retryButton = document.createElement('button');
-    retryButton.textContent = 'Bandyti dar kartą';
-    retryButton.className = 'retry-button';
-    retryButton.onclick = () => {
-        element.classList.remove('error-state');
-        getNewHaiku();
-    };
-    element.appendChild(retryButton);
+// Typing animation with performance optimization
+function typeTextWithPromise(element, text) {
+    return new Promise((resolve) => {
+        element.textContent = '';
+        let i = 0;
+        const speed = 50;
+        const variance = 20;
+
+        function typeNextChar() {
+            if (i < text.length) {
+                element.textContent += text.charAt(i);
+                i++;
+                setTimeout(() => requestAnimationFrame(typeNextChar), 
+                    speed + Math.random() * variance);
+            } else {
+                resolve();
+            }
+        }
+
+        requestAnimationFrame(typeNextChar);
+    });
 }
 
-// Optimized sharing functionality
+// UI Managers
+const uiManager = {
+    showHistory() {
+        this.updateHistoryDisplay();
+        DOM.historyContainer.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+    },
+
+    showFavorites() {
+        this.updateFavoritesDisplay();
+        DOM.favoritesContainer.style.display = 'block';
+        document.body.style.overflow = 'hidden';
+    },
+
+    closeModals() {
+        DOM.historyContainer.style.display = 'none';
+        DOM.favoritesContainer.style.display = 'none';
+        document.body.style.overflow = 'auto';
+    },
+
+    updateHistoryDisplay() {
+        if (!DOM.historyList) return;
+
+        const fragment = document.createDocumentFragment();
+        
+        historyManager.getHistory().forEach((item, index) => {
+            const historyItem = this.createHistoryItem(item, index);
+            fragment.appendChild(historyItem);
+        });
+
+        DOM.historyList.innerHTML = '';
+        DOM.historyList.appendChild(fragment);
+    },
+
+    updateFavoritesDisplay() {
+        if (!DOM.favoritesList) return;
+
+        const fragment = document.createDocumentFragment();
+        
+        favoritesManager.favorites.forEach((item, index) => {
+            const favoriteItem = this.createFavoriteItem(item, index);
+            fragment.appendChild(favoriteItem);
+        });
+
+        DOM.favoritesList.innerHTML = '';
+        DOM.favoritesList.appendChild(fragment);
+    },
+
+    createHistoryItem(item, index) {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        div.innerHTML = `
+            <div class="item-header">
+                <span class="item-source">${item.source}</span>
+                <span class="item-date">${historyManager.formatDate(item.timestamp)}</span>
+            </div>
+            <div class="item-headline">${item.headline}</div>
+            <div class="item-haiku">${item.haiku}</div>
+            <div class="item-actions">
+                <button onclick="favoritesManager.addFavorite('${item.headline}', '${item.haiku}', '${item.source}')" 
+                        class="social-button">
+                    ⭐ Pamėgti
+                </button>
+            </div>
+        `;
+        return div;
+    },
+
+    createFavoriteItem(item, index) {
+        const div = document.createElement('div');
+        div.className = 'favorite-item';
+        div.innerHTML = `
+            <div class="item-header">
+                <span class="item-source">${item.source}</span>
+                <span class="item-date">${historyManager.formatDate(item.timestamp)}</span>
+            </div>
+            <div class="item-headline">${item.headline}</div>
+            <div class="item-haiku">${item.haiku}</div>
+            <div class="item-actions">
+                <button onclick="favoritesManager.removeFavorite(${index})" 
+                        class="social-button">
+                    🗑️ Pašalinti
+                </button>
+            </div>
+        `;
+        return div;
+    }
+};
+
+// Sharing functionality
 async function shareContent(platform) {
-    const headline = elements.headline.textContent;
-    const haiku = elements.haiku.textContent;
-    const text = `${headline}\n\n${haiku}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
-    const url = window.location.href;
+    const text = `${DOM.headline.textContent}\n\n${DOM.haiku.textContent}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
+    const url = encodeURIComponent(window.location.href);
 
     if (navigator.share && platform === 'native') {
         try {
             await navigator.share({
                 title: 'Lietuviškų Naujienų Haiku',
-                text,
-                url
+                text: text,
+                url: window.location.href
             });
         } catch (error) {
-            if (error.name !== 'AbortError') {
-                console.error('Share failed:', error);
-            }
+            console.error('Error sharing:', error);
         }
         return;
     }
 
     const shareUrls = {
-        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
-        facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`
+        twitter: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${url}`,
+        facebook: `https://www.facebook.com/sharer/sharer.php?u=${url}`
     };
 
     if (shareUrls[platform]) {
@@ -194,17 +353,14 @@ async function shareContent(platform) {
     }
 }
 
-// Optimized copy functionality
+// Clipboard functionality
 async function copyToClipboard() {
-    const headline = elements.headline.textContent;
-    const haiku = elements.haiku.textContent;
-    const text = `${headline}\n\n${haiku}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
+    const text = `${DOM.headline.textContent}\n\n${DOM.haiku.textContent}\n\n🤖 Sugeneravo Lietuviškų Naujienų Haiku`;
     
     try {
         await navigator.clipboard.writeText(text);
         showNotification('Nukopijuota!');
     } catch (err) {
-        console.error('Copy failed:', err);
         showNotification('Nepavyko nukopijuoti', 'error');
     }
 }
@@ -214,111 +370,123 @@ function showNotification(message, type = 'success') {
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
+    
+    document.querySelectorAll('.notification').forEach(n => n.remove());
+    
     document.body.appendChild(notification);
-
+    
     setTimeout(() => {
         notification.remove();
-    }, CONFIG.NOTIFICATION_DURATION);
+    }, 3000);
 }
 
-// Theme handling
-function toggleTheme() {
-    const currentTheme = localStorage.getItem('theme') || 'dark';
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('theme', newTheme);
-}
-
-// History display
-function showHistory() {
-    updateHistoryDisplay();
-    elements.historyContainer.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-}
-
-function closeModal() {
-    elements.historyContainer.style.display = 'none';
-    document.body.style.overflow = 'auto';
-}
-
-function updateHistoryDisplay() {
-    if (!elements.historyList) return;
-
-    elements.historyList.innerHTML = '';
-    historyManager.getHistory().forEach((item) => {
-        const historyItem = document.createElement('div');
-        historyItem.className = 'history-item';
-        historyItem.innerHTML = `
-            <div style="font-weight: bold;">${item.headline}</div>
-            <div style="white-space: pre-line; margin: 10px 0;">${item.haiku}</div>
-            <div style="font-size: 0.8em;">
-                ${new Date(item.timestamp).toLocaleString('lt-LT')}
-            </div>
-        `;
-        elements.historyList.appendChild(historyItem);
-    });
-}
-
-// Meta tags update
-function updateMetaTags(headline, haiku) {
-    const metaTags = {
-        'og:title': headline,
-        'og:description': haiku,
-        'twitter:title': headline,
-        'twitter:description': haiku
-    };
-
-    Object.entries(metaTags).forEach(([property, content]) => {
-        const meta = document.querySelector(`meta[property="${property}"]`);
-        if (meta) meta.setAttribute('content', content);
-    });
-}
-
-// Clock update
+// Clock update with performance optimization
 function updateDateTime() {
     const now = new Date();
-    elements.clock.textContent = now.toLocaleTimeString('lt-LT', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+    
+    DOM.clock.textContent = now.toLocaleTimeString('lt-LT', {
+        hour: '2-digit',
+        minute: '2-digit'
     });
-    elements.date.textContent = now.toLocaleDateString('lt-LT', {
+    
+    DOM.date.textContent = now.toLocaleDateString('lt-LT', {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
     });
+
+    requestAnimationFrame(() => {
+        setTimeout(updateDateTime, 1000);
+    });
 }
 
-// Event delegation for all button clicks
+// Error handling
+function handleError(error, element) {
+    const errorMessage = error.message === 'Failed to fetch' || error.name === 'AbortError'
+        ? 'Nepavyko prisijungti prie serverio. Bandykite vėliau.'
+        : 'Nepavyko sugeneruoti haiku. Bandykite dar kartą.';
+    
+    element.textContent = errorMessage;
+    showNotification(errorMessage, 'error');
+}
+
+// Event delegation
 document.addEventListener('click', async (e) => {
-    const button = e.target.closest('button');
-    if (!button) return;
+    const target = e.target.closest('[data-action]');
+    if (!target) return;
 
-    const action = button.getAttribute('data-action');
-    if (!action) return;
+    const actions = {
+        'new-haiku': () => getNewHaiku(),
+        'share-twitter': () => shareContent('twitter'),
+        'share-facebook': () => shareContent('facebook'),
+        'show-history': () => uiManager.showHistory(),
+        'toggle-favorites': () => uiManager.showFavorites(),
+        'toggle-theme': () => themeManager.toggleTheme(),
+        'copy': () => copyToClipboard(),
+        'close-modal': () => uiManager.closeModals(),
+        'favorite-current': () => {
+            const headline = DOM.headline.textContent;
+            const haiku = DOM.haiku.textContent;
+            const source = DOM.sourceIndicator.textContent.replace('Šaltinis: ', '');
+            
+            if (favoritesManager.isFavorite(headline, haiku)) {
+                const index = favoritesManager.favorites.findIndex(
+                    fav => fav.headline === headline && fav.haiku === haiku
+                );
+                if (index !== -1) {
+                    favoritesManager.removeFavorite(index);
+                }
+            } else {
+                favoritesManager.addFavorite(headline, haiku, source);
+            }
+        }
+    };
 
-    switch (action) {
-        case 'new-haiku': await getNewHaiku(); break;
-        case 'share-twitter': shareContent('twitter'); break;
-        case 'share-facebook': shareContent('facebook'); break;
-        case 'show-history': showHistory(); break;
-        case 'close-modal': closeModal(); break;
-        case 'toggle-theme': toggleTheme(); break;
-        case 'copy': await copyToClipboard(); break;
+    const action = target.getAttribute('data-action');
+    if (actions[action]) {
+        await actions[action]();
+    }
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        uiManager.closeModals();
+    } else if (e.key === 'n' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        getNewHaiku();
     }
 });
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    setInterval(updateDateTime, 1000);
+    themeManager.initTheme();
     updateDateTime();
-    getNewHaiku();
+    getNewHaiku(); // Initial load
 });
 
-// Handle offline/online events
-window.addEventListener('online', () => {
-    showNotification('Interneto ryšys atkurtas');
-});
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(registration => {
+                console.log('ServiceWorker registration successful');
+            })
+            .catch(err => {
+                console.log('ServiceWorker registration failed: ', err);
+            });
+    });
+}
 
-window.addEventListener('offline', () => {
-    showNotification('Nėra interneto ryšio', 'error');
-});
+// Meta tags update function
+function updateMetaTags(headline, haiku) {
+    const metaDescription = document.querySelector('meta[name="description"]');
+    const metaOgDescription = document.querySelector('meta[property="og:description"]');
+    const metaTwitterDescription = document.querySelector('meta[name="twitter:description"]');
+    
+    const description = `${headline} - ${haiku}`;
+    
+    if (metaDescription) metaDescription.setAttribute('content', description);
+    if (metaOgDescription) metaOgDescription.setAttribute('content', description);
+    if (metaTwitterDescription) metaTwitterDescription.setAttribute('content', description);
+}
