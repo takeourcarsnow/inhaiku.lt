@@ -172,6 +172,10 @@
     $$('.chip', els.categoryRow).forEach(ch => {
       ch.addEventListener('click', async () => {
         if (state.typing) return;
+        // Remove 'active' from all chips
+        $$('.chip', els.categoryRow).forEach(c => c.classList.remove('active'));
+        // Add 'active' to the clicked chip
+        ch.classList.add('active');
         state.category = ch.dataset.cat;
         store.set('nh.category', state.category);
         renderIndicator();
