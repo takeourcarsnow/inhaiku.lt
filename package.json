@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.16.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
     "fast-xml-parser": "^4.4.1"
+  },
+  "devDependencies": {
+    "vercel": "^31.6.1"
   }
 }
