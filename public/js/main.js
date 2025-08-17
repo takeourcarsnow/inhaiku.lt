@@ -495,8 +495,9 @@
   renderIndicator();
   setSkeleton(true);
   els.headline.classList.remove('skeleton');
-  els.headline.textContent = 'Press “New haiku”.';
+  els.headline.textContent = 'Tap Generate...';
   els.haiku.classList.remove('skeleton');
-  els.haiku.textContent = 'We will turn a headline into a 3-line poem.';
+  els.haiku.textContent = '...and turn a headline into a 3-line poem';
 
 })();
+
