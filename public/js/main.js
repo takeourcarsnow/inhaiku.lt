@@ -73,7 +73,7 @@
     theme: store.get('nh.theme', (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light'),
     sound: store.get('nh.sound', true),
     country: store.get('nh.country', defaultCountry()),
-    category: store.get('nh.category', 'technology'),
+    category: store.get('nh.category', 'general'),
     haikuLang: store.get('nh.lang', 'auto'), // 'auto' or specific code
     headlines: [],
     lastFetchedAt: 0,
@@ -494,4 +494,5 @@
   els.headline.textContent = 'Press “New haiku”.';
   els.haiku.classList.remove('skeleton');
   els.haiku.textContent = 'We will turn a headline into a 3-line poem.';
+
 })();
