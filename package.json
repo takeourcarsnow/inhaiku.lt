@@ -13,6 +13,6 @@
     "fast-xml-parser": "^4.4.1"
   },
   "devDependencies": {
-    "vercel": "^31.6.1"
+  "vercel": "^39.0.0"
   }
 }
