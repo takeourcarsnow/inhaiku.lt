@@ -262,11 +262,6 @@ body {
 }
 
 /* Typewriter cursor */
-.cursor {
-  display: inline-block; width: 10px; margin-left: 2px;
-  border-left: 2px solid var(--text-color); height: 1.2em;
-  animation: blink 1s step-start infinite;
-}
 
 /* Notifications */
 .notification {

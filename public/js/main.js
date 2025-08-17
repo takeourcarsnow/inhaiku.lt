@@ -271,21 +271,34 @@
         return;
       }
 
-      // pick a random headline and generate haiku
-      const item = pickRandom(state.headlines);
-      state.current = item;
-      renderIndicator();
 
-      await typeText(els.headline, item.title, 15);
+  // pick a random headline and generate haiku
+  const item = pickRandom(state.headlines);
+  state.current = item;
+  renderIndicator();
 
-      const langToUse = state.haikuLang === 'auto' ? defaultLangForCountry(state.country) : state.haikuLang;
-      const poem = await fetchHaiku(item.title, langToUse);
-      state.currentHaiku = poem;
-      await typeText(els.haiku, poem, 24);
+  // Remove trailing source from headline if present (e.g., ' - CNN', ' — BBC News', ' (CNN)', ' [CNN]', ' - Lrytas')
+  let cleanTitle = item.title
+    // Remove ' - Source', ' — Source', ' – Source', '‒ Source', with or without whitespace, Source can be any non-digit, non-dash, non-parenthesis, non-bracket, non-dot, at least 2 chars
+    .replace(/\s*[-—‒–]\s*[^-—‒–()\[\].\d]{2,}\s*$/u, '')
+    // Remove ' (Source)' or ' [Source]' at end
+    .replace(/\s*[\[(][^\])\]]{2,}[\])]\s*$/u, '')
+    .trim();
+  if (!cleanTitle) cleanTitle = item.title; // fallback if regex removes everything
+
+  await typeText(els.headline, cleanTitle, 15);
+
+  const langToUse = state.haikuLang === 'auto' ? defaultLangForCountry(state.country) : state.haikuLang;
+  const poem = await fetchHaiku(cleanTitle, langToUse);
+  state.currentHaiku = poem;
+  await typeText(els.haiku, poem, 24);
+
+  // Store the cleaned title for use in copy/share
+  state.currentCleanTitle = cleanTitle;
 
       // update favorite button
       const entry = {
-        title: item.title,
+        title: cleanTitle,
         source: item.source,
         url: item.url,
         haiku: poem,
@@ -399,13 +412,13 @@
 
   function copyCurrent() {
     if (!state.currentHaiku || !state.current) return;
-    copyText(`${state.currentHaiku}\n\n${state.current.title}\n${state.current.url}`);
+    copyText(`${state.currentHaiku}\n\n${state.currentCleanTitle || state.current.title}\n${state.current.url}`);
   }
 
   function shareTwitter() {
     if (!state.currentHaiku || !state.current) return;
     const url = new URL('https://twitter.com/intent/tweet');
-    url.searchParams.set('text', `${state.currentHaiku}\n\n${state.current.title}`);
+  url.searchParams.set('text', `${state.currentHaiku}\n\n${state.currentCleanTitle || state.current.title}`);
     url.searchParams.set('url', state.current.url);
     window.open(url.toString(), '_blank');
   }
